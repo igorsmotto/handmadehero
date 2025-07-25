@@ -1,5 +1,7 @@
 #include <windows.h>
 #include <stdint.h>
+#include <mmdeviceapi.h>
+#include <audioclient.h>
 
 typedef int8_t int8;
 typedef int16_t int16;
@@ -334,6 +336,38 @@ internal void HandleControllerInput()
     }
 }
 
+internal void LoadAudio()
+{
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
+    IMMDeviceEnumerator *deviceEnumerator;
+    CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void **)&deviceEnumerator);
+
+    IMMDevice *audioDevice;
+    deviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &audioDevice);
+
+    IAudioClient3 *audioClient;
+    audioDevice->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr, (void **)&audioClient);
+
+    REFERENCE_TIME defaultPeriod;
+    REFERENCE_TIME minimumPeriod;
+
+    audioClient->GetDevicePeriod(&defaultPeriod, &minimumPeriod);
+
+    WAVEFORMATEX *mixFormat;
+    audioClient->GetMixFormat(&mixFormat);
+
+    audioClient->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+        defaultPeriod,
+        0,
+        mixFormat,
+        nullptr);
+
+    // Note: The above code can fail in any step (since I'm not checking HRESULTs), so in a real application we should handle errors properly.
+}
+
 int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CmdLine, int CmdShow)
 {
     WNDCLASS wc = {};
@@ -343,6 +377,8 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CmdLine, in
     // wc.hIcon =
     wc.lpszClassName = "HandmadeHeroWindowClass";
     wc.lpfnWndProc = WindowProc;
+
+    LoadAudio();
 
     RegisterClass(&wc);
     HWND Window = CreateWindowExA(
